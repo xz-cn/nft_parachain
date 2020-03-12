@@ -56,7 +56,7 @@ pub type BlockNumber = u64;
 pub type Nonce = u64;
 
 /// Used for the module template in `./template.rs`
-mod template;
+mod nft;
 
 /// Opaque types. These are used by the CLI to instantiate machinery that don't need to know
 /// the specifics of the runtime. They can then be made to be agnostic over specific formats
@@ -92,8 +92,8 @@ pub mod opaque {
 
 /// This runtime version.
 pub const VERSION: RuntimeVersion = RuntimeVersion {
-	spec_name: create_runtime_str!("test"),
-	impl_name: create_runtime_str!("test"),
+	spec_name: create_runtime_str!("nft-parachain"),
+	impl_name: create_runtime_str!("nft-parachain"),
 	authoring_version: 3,
 	spec_version: 4,
 	impl_version: 4,
@@ -187,10 +187,23 @@ impl sudo::Trait for Runtime {
 	type Proposal = Call;
 }
 
-/// Used for the module template in `./template.rs`
-impl template::Trait for Runtime {
+/// Used for the module nft in `./nft.rs`
+impl nft::Trait for Runtime {
 	type Event = Event;
 }
+
+// // This is the srml-contract Trait
+// impl srml_contract::Trait for Runtime {
+// 	type Currency = Balances;
+// 	type Call = Call;
+// 	type Event = Event;
+// 	type Gas = u64;
+//     // Note the updated names in these lines too!
+// 	type DetermineContractAddress = srml_contract::SimpleAddressDeterminator<Runtime>;
+// 	type ComputeDispatchFee = srml_contract::DefaultDispatchFeeComputor<Runtime>;
+// 	type TrieIdGenerator = srml_contract::TrieIdFromParentCounter<Runtime>;
+// 	type GasPayment = ();
+// }
 
 construct_runtime!(
 	pub enum Runtime with Log(InternalLog: DigestItem<Hash, AuthorityId, AuthoritySignature>) where
@@ -205,8 +218,8 @@ construct_runtime!(
 		Indices: indices,
 		Balances: balances,
 		Sudo: sudo,
-		// Used for the module template in `./template.rs`
-		TemplateModule: template::{Module, Call, Storage, Event<T>},
+		// Used for the module nft in `./nft.rs`
+		Nft: nft::{Module, Call, Storage, Event<T>},
 	}
 );
 
