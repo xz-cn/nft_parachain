@@ -4,14 +4,13 @@
 use support::{decl_module, decl_storage, decl_event, StorageMap, StorageValue, ensure, dispatch::Result};
 use system::ensure_signed;
 use parity_codec::{Encode, Decode};
-use rstd::cmp;
 
 #[derive(Encode, Decode, Default, Clone, PartialEq)]
 #[cfg_attr(feature = "std", derive(Debug))]
 pub struct CollectionType<AccountId> {
-	pub Owner: AccountId,
-	pub NextItemId: u64,
-	pub CustomDataSize: u32,
+	pub owner: AccountId,
+	pub next_item_id: u64,
+	pub custom_data_size: u32,
 }
 
 /// The module's configuration trait.
@@ -26,17 +25,11 @@ pub trait Trait: system::Trait {
 decl_storage! {
 	trait Store for Module<T: Trait> as nft {
 
-		//pub MyBool get(my_bool_getter): bool;
-
 		/// Next available collection ID
 		pub NextCollectionID get(next_collection_id): u64;
 
 		/// Collection map
 		pub Collection get(collection): map u64 => CollectionType<T::AccountId>;
-
-		//pub some_address: T::AccountId; 
-
-
 	}
 }
 
@@ -57,29 +50,23 @@ decl_module! {
 		// @param customDataSz size of custom data in each collection item
 		// returns collection ID
 		//pub fn create_collection(origin, collection: Vec<u8>) -> Result {
-			pub fn create_collection(origin, customDataSz: u32) -> Result {
+			pub fn create_collection(origin, custom_data_sz: u32) -> Result {
 				// Anyone can create a collection
 				let who = ensure_signed(origin)?;
 	
-				//<some_address<T>>::put(who);
-	
 				// Generate next collection ID
-				let nextId = Self::next_collection_id();
-				//let nextId = 1;
-				<NextCollectionID<T>>::put(nextId+1);
-	
-				// Extract collection parameters
-				//let collectionName = String::from_utf8(collection).unwrap();
+				let next_id = Self::next_collection_id();
+				<NextCollectionID<T>>::put(next_id+1);
 	
 				// Create new collection
 				let new_collection = CollectionType {
-					Owner: who,
-					NextItemId: 1,
-					CustomDataSize: customDataSz,
+					owner: who,
+					next_item_id: 1,
+					custom_data_size: custom_data_sz,
 				};
 				
 				// Add new collection to map
-				<Collection<T>>::insert(nextId, new_collection);
+				<Collection<T>>::insert(next_id, new_collection);
 	
 				Ok(())
 			}
@@ -87,7 +74,7 @@ decl_module! {
 			pub fn destroy_collection(origin, collection_id: u64) -> Result {
 
 				let sender = ensure_signed(origin)?;
-				let owner = <Collection<T>>::get(collection_id).Owner;
+				let owner = <Collection<T>>::get(collection_id).owner;
 
 				ensure!(sender == owner, "You do not own this collection");
 				<Collection<T>>::remove(collection_id);
@@ -101,9 +88,9 @@ decl_module! {
 				ensure!(<Collection<T>>::exists(collection_id), "This collection does not exist");
 
 				let mut target_collection = <Collection<T>>::get(collection_id);
-				ensure!(sender == target_collection.Owner, "You do not own this collection");
+				ensure!(sender == target_collection.owner, "You do not own this collection");
 
-				target_collection.Owner = new_owner;
+				target_collection.owner = new_owner;
 				<Collection<T>>::insert(collection_id, target_collection);
 
 				Ok(())
@@ -125,8 +112,8 @@ decl_event!(
 mod tests {
 	use super::*;
 
-	use runtime_io::with_externalities;
 	use primitives::{H256, Blake2Hasher};
+	use runtime_io::{with_externalities, TestExternalities};
 	use support::{impl_outer_origin, assert_ok};
 	use runtime_primitives::{
 		BuildStorage,
@@ -167,14 +154,18 @@ mod tests {
 		system::GenesisConfig::<Test>::default().build_storage().unwrap().0.into()
 	}
 
+    fn build_ext() -> TestExternalities<Blake2Hasher> {
+        let mut t = system::GenesisConfig::<Test>::default().build_storage().unwrap().0;
+     //   t.extend(balances::GenesisConfig::<Test>::default().build_storage().unwrap().0);
+        t.into()
+    }
+
 	#[test]
-	fn it_works_for_default_value() {
+	fn create_collection_test() {
 		with_externalities(&mut new_test_ext(), || {
 			// Just a dummy test for the dummy funtion `do_something`
 			// calling the `do_something` function with a value 42
-			assert_ok!(nft::do_something(Origin::signed(1), 42));
-			// asserting that the stored value is equal to what we stored
-			assert_eq!(nft::something(), Some(42));
+			assert_ok!(nft::create_collection(Origin::signed(1), 1));
 		});
 	}
 }
