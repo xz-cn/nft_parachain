@@ -31,12 +31,6 @@ pub struct NftItemType<AccountId> {
 	pub data: Vec<u8>,
 }
 
-// impl Clone for NftItemType<AccountId> {
-//     fn clone(&self) -> NftItemType<AccountId> {
-//         *self
-// 	}
-// }
-
 /// The module's configuration trait.
 pub trait Trait: system::Trait {
 	// TODO: Add other types and constants required configure this module.
@@ -56,14 +50,14 @@ decl_storage! {
 		pub Collection get(collection): map u64 => CollectionType<T::AccountId>;
 
 		/// Admins map (collection)
-		pub AdminList get(collection_id): map u64 => Vec<T::AccountId>;
+		pub AdminList get(admin_list_collection): map u64 => Vec<T::AccountId>;
 
 		/// Balance owner per collection map
-		pub Balance get(owner): map (u64, T::AccountId) => u64;
+		pub Balance get(balance_count): map (u64, T::AccountId) => u64;
 
 		/// Item double map (collection)
 		pub ItemList get(item_id): map (u64, u64) => NftItemType<T::AccountId>;
-		pub ItemListIndex get(index): map u64 => u64;
+		pub ItemListIndex get(item_index): map u64 => u64;
 	}
 }
 
@@ -107,8 +101,9 @@ decl_module! {
 			pub fn destroy_collection(origin, collection_id: u64) -> Result {
 
 				let sender = ensure_signed(origin)?;
-				let owner = <Collection<T>>::get(collection_id).owner;
+				ensure!(<Collection<T>>::exists(collection_id), "This collection does not exist");
 
+				let owner = <Collection<T>>::get(collection_id).owner;
 				ensure!(sender == owner, "You do not own this collection");
 				<Collection<T>>::remove(collection_id);
 
@@ -131,7 +126,6 @@ decl_module! {
 
 			pub fn add_collection_admin(origin, collection_id: u64, new_admin_id: T::AccountId) -> Result {
 
-				runtime_io::print("Add admin called");
 				let sender = ensure_signed(origin)?;
 				ensure!(<Collection<T>>::exists(collection_id), "This collection does not exist");
 
@@ -292,14 +286,6 @@ decl_event!(
     }
 );
 
-
-// impl<T: Trait> Module<T> {
-//     fn is_owner_or_admin(sender: T::AccountId, collection_id: u64, adm_lst: Vec<T::AccountId>) -> Result {
-
-// 		Ok(())
-// 	}
-// }
-
 /// tests for this module
 #[cfg(test)]
 mod tests {
@@ -307,7 +293,7 @@ mod tests {
 
 	use primitives::{H256, Blake2Hasher};
 	use runtime_io::{with_externalities, TestExternalities};
-	use support::{impl_outer_origin, assert_ok};
+	use support::{impl_outer_origin, assert_ok, assert_noop};
 	use runtime_primitives::{
 		BuildStorage,
 		traits::{BlakeTwo256, IdentityLookup},
@@ -344,7 +330,7 @@ mod tests {
 	// This function basically just builds a genesis storage key/value store according to
 	// our desired mockup.
 	fn new_test_ext() -> runtime_io::TestExternalities<Blake2Hasher> {
-		system::GenesisConfig::<Test>::default().build_storage().unwrap().0.into()
+		system::GenesisConfig::<Test>::default().build_storage().unwrap().0.into() 
 	}
 
     fn build_ext() -> TestExternalities<Blake2Hasher> {
@@ -355,10 +341,54 @@ mod tests {
 	#[test]
 	fn create_collection_test() {
 		with_externalities(&mut new_test_ext(), || {
-			let id = 1;
-			// Just a dummy test for the dummy funtion `do_something`
-			// calling the `do_something` function with a value 42
-			assert_ok!(nft::create_collection(Origin::signed(1), id));
+			let size = 1024;
+			let origin1 = Origin::signed(1);
+			let origin2 = Origin::signed(2);
+			let origin3 = Origin::signed(3);
+
+			assert_ok!(nft::create_collection(origin1.clone(), size));
+			assert_ok!(nft::create_collection(origin2.clone(), size));
+			assert_ok!(nft::create_collection(origin3.clone(), size));
+
+			assert_eq!(nft::collection(0).owner, 1);
+			assert_eq!(nft::collection(1).owner, 2);
+			assert_eq!(nft::collection(2).owner, 3);
+
+			// collection admin
+			assert_ok!(nft::add_collection_admin(origin2.clone(), 1, 1));
+			assert_ok!(nft::add_collection_admin(origin1.clone(), 1, 3));
+
+			assert_eq!(nft::admin_list_collection(1).contains(&1), true);
+			assert_eq!(nft::admin_list_collection(1).contains(&3), true);
+
+			// create item
+			assert_ok!(nft::create_item(origin2.clone(), 1, [1,1,1].to_vec()));
+			assert_ok!(nft::create_item(origin2.clone(), 1, [2,2,2].to_vec()));
+
+			// check balance (collection with id = 1, user id = 2)
+			assert_eq!(nft::balance_count((1, 2)), 2);
+			assert_eq!(nft::item_id((1,1)).owner, 2);
+
+			// transfer
+			assert_ok!(nft::transfer(origin2.clone(), 1, 1, 1));
+			assert_eq!(nft::item_id((1,1)).owner, 1);
+			
+			// burn item
+			assert_ok!(nft::burn_item(origin1.clone(), 1, 1));
+			assert_noop!(nft::burn_item(origin1.clone(), 1, 1), "Item does not exists");
+
+			// remove admin
+			assert_ok!(nft::remove_collection_admin(origin2.clone(), 1, 3));
+			assert_eq!(nft::admin_list_collection(1).contains(&3), false);
+
+			// change owner
+			assert_ok!(nft::change_collection_owner(origin2.clone(), 1, 1));
+			assert_eq!(nft::collection(1).owner, 1);
+
+			// destroy collection
+			assert_ok!(nft::destroy_collection(Origin::signed(1), 1));
+			assert_noop!(nft::destroy_collection(Origin::signed(1), 1), "This collection does not exist");
+			// add negative check
 		});
 	}
 }
