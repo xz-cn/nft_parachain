@@ -6,6 +6,9 @@ Install Rust:
 
 ```bash
 curl https://sh.rustup.rs -sSf | sh
+rustup default nightly
+sudo apt-get install libssl-dev pkg-config libclang-dev clang
+
 ```
 
 Install required tools:
