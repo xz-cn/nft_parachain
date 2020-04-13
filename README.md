@@ -1,8 +1,6 @@
-# test
+# NFT Parachain
 
-A new SRML-based Substrate node, ready for hacking.
-
-# Building
+## Building
 
 Install Rust:
 
@@ -25,10 +23,10 @@ Build the WebAssembly binary:
 Build all native code:
 
 ```bash
-cargo build
+cargo build --release
 ```
 
-# Run
+## Run
 
 You can start a development chain with:
 
