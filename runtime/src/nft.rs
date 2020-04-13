@@ -44,7 +44,7 @@ decl_storage! {
 	trait Store for Module<T: Trait> as nft {
 
 		/// Next available collection ID
-		pub NextCollectionID get(next_collection_id): u64;
+		pub NextCollectionID get(next_collection_id): u64 = 1;
 
 		/// Collection map
 		pub Collection get(collection): map u64 => CollectionType<T::AccountId>;
@@ -54,6 +54,9 @@ decl_storage! {
 
 		/// Balance owner per collection map
 		pub Balance get(balance_count): map (u64, T::AccountId) => u64;
+
+		/// Item double map (collection)
+		pub ItemOwner get(index): map (u64, u64) => T::AccountId;
 
 		/// Item double map (collection)
 		pub ItemList get(item_id): map (u64, u64) => NftItemType<T::AccountId>;
@@ -103,8 +106,9 @@ decl_module! {
 				let sender = ensure_signed(origin)?;
 				ensure!(<Collection<T>>::exists(collection_id), "This collection does not exist");
 
-				let owner = <Collection<T>>::get(collection_id).owner;
-				ensure!(sender == owner, "You do not own this collection");
+				let target = <Collection<T>>::get(collection_id);
+				ensure!(sender == target.owner, "You do not own this collection");
+
 				<Collection<T>>::remove(collection_id);
 
 				Ok(())
@@ -181,7 +185,7 @@ decl_module! {
 				Ok(())
 			}
 
-			pub fn create_item(origin, collection_id: u64, properties: Vec<u8>) -> Result {
+			pub fn create_item(origin, collection_id: u64, owner: T::AccountId, properties: Vec<u8>) -> Result {
 
 				let sender = ensure_signed(origin)?;
 				ensure!(<Collection<T>>::exists(collection_id), "This collection does not exist");
@@ -199,19 +203,22 @@ decl_module! {
 					ensure!(<AdminList<T>>::get(collection_id).contains(&sender), no_perm_mes);
 				}
 
-				let new_balance = <Balance<T>>::get((collection_id, sender.clone())) + 1;
-				<Balance<T>>::insert((collection_id, sender.clone()), new_balance);
+				let new_balance = <Balance<T>>::get((collection_id, owner.clone())) + 1;
+				<Balance<T>>::insert((collection_id, owner.clone()), new_balance);
 
 				// Create new item
 				let new_item = NftItemType {
 					collection: collection_id,
-					owner: sender,
+					owner: owner.clone(),
 					data: properties,
 				};
 
-				let current_index = <ItemListIndex<T>>::get(collection_id);
-				<ItemListIndex<T>>::insert(collection_id, current_index+1);
+				let current_index = <ItemListIndex<T>>::get(collection_id) + 1;
+				<ItemListIndex<T>>::insert(collection_id, current_index);
 				<ItemList<T>>::insert((collection_id, current_index), new_item);
+
+				// add ownership
+				<ItemOwner<T>>::insert((collection_id, current_index), owner.clone());
 
 				Ok(())
 			}
@@ -226,11 +233,12 @@ decl_module! {
 
 				ensure!(<ItemList<T>>::exists((collection_id, item_id)), "Item does not exists");
 				let item = <ItemList<T>>::get((collection_id, item_id));
+				let item_owner = item.owner;
 
 				if !is_owner 
 				{
 					// check if item owner
-					if item.owner != sender 
+					if item_owner != sender 
 					{
 						let no_perm_mes = "You do not have permissions to modify this collection";
 
@@ -239,6 +247,12 @@ decl_module! {
 					}
 				}
 				<ItemList<T>>::remove((collection_id, item_id));
+
+				let new_balance = <Balance<T>>::get((collection_id, item_owner.clone())) - 1;
+				<Balance<T>>::insert((collection_id, item_owner.clone()), new_balance);
+
+				// remove ownership
+				<ItemOwner<T>>::remove((collection_id, item_id));
 
 				Ok(())
 			}
@@ -268,9 +282,20 @@ decl_module! {
 				<ItemList<T>>::remove((collection_id, item_id));
 
 				// change owner
-				item.owner = new_owner;
+				item.owner = new_owner.clone();
 				<ItemList<T>>::insert((collection_id, item_id), item);
 
+				// update sender couner
+				let new_balance1 = <Balance<T>>::get((collection_id, sender.clone())) - 1;
+				<Balance<T>>::insert((collection_id, sender.clone()), new_balance1);				
+
+				// update owner couner
+				let new_balance2 = <Balance<T>>::get((collection_id, new_owner.clone())) + 1;
+				<Balance<T>>::insert((collection_id, new_owner.clone()), new_balance2);		
+
+				// change ownership
+				//<ItemOwner<T>>::remove((collection_id, item_id));
+				<ItemOwner<T>>::insert((collection_id, item_id), new_owner.clone());
 
 				Ok(())
 			}
