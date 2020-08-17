@@ -409,6 +409,7 @@ decl_module! {
             {
                 Self::check_owner_or_admin_permissions(collection_id, sender.clone())?;
             }
+            ensure!(Self::check_white_list_access(sender.clone(), collection_id), "Your account is not in white list");
             let target_collection = <Collection<T>>::get(collection_id);
 
             match target_collection.mode 
@@ -429,6 +430,7 @@ decl_module! {
 
             let sender = ensure_signed(origin)?;
             ensure!(Self::is_item_owner(sender.clone(), collection_id, item_id), "Only item owner can call transfer method");
+            ensure!(Self::check_white_list_access(sender.clone(), collection_id), "Your account is not in white list");
 
             let target_collection = <Collection<T>>::get(collection_id);
 
@@ -453,6 +455,7 @@ decl_module! {
             {
                 Self::check_owner_or_admin_permissions(collection_id, sender.clone())?;
             }
+            ensure!(Self::check_white_list_access(sender.clone(), collection_id), "Your account is not in white list");
 
             let list_exists = <ApprovedList<T>>::contains_key(collection_id, item_id);
             if list_exists {
@@ -487,8 +490,9 @@ decl_module! {
 
             if !approved
             {
-                Self::check_owner_or_admin_permissions(collection_id, sender)?;
+                Self::check_owner_or_admin_permissions(collection_id, sender.clone())?;
             }
+            ensure!(Self::check_white_list_access(sender, collection_id), "Your account is not in white list");
             
             let target_collection = <Collection<T>>::get(collection_id);
 
@@ -533,6 +537,55 @@ decl_module! {
 
             Ok(())        
         }
+
+        #[weight = 0]
+        pub fn set_access_mode(origin, collection_id: u64, access_mode: AccessMode) -> DispatchResult {
+
+            let sender = ensure_signed(origin)?;
+            Self::check_owner_or_admin_permissions(collection_id, sender)?;
+
+            let mut target_collection = <Collection<T>>::get(collection_id);
+            target_collection.access = access_mode;
+            <Collection<T>>::insert(collection_id, target_collection);
+
+            Ok(())
+        }
+
+        #[weight = 0]
+        pub fn add_to_white_list(origin, collection_id: u64, account_id: T::AccountId) -> DispatchResult {
+
+            let sender = ensure_signed(origin)?;
+            Self::check_owner_or_admin_permissions(collection_id, sender)?;
+            let mut white_list: Vec<T::AccountId> = Vec::new();
+
+            if <WhiteList<T>>::contains_key(collection_id)
+            {
+                white_list = <WhiteList<T>>::get(collection_id);
+                ensure!(!white_list.contains(&account_id), "Account is already in white list");
+            }
+
+            white_list.push(account_id);
+            <WhiteList<T>>::insert(collection_id, white_list);
+
+            Ok(())
+        }
+
+        #[weight = 0]
+        pub fn remove_from_white_list(origin, collection_id: u64, account_id: T::AccountId) -> DispatchResult {
+
+            let sender = ensure_signed(origin)?;
+            Self::check_owner_or_admin_permissions(collection_id, sender)?;
+
+            if <WhiteList<T>>::contains_key(collection_id)
+            {
+                let mut white_list = <WhiteList<T>>::get(collection_id);
+                white_list.retain(|i| *i != account_id);
+                <WhiteList<T>>::insert(collection_id, white_list);
+            }
+
+            Ok(())
+        }
+
     }
 }
 
@@ -553,22 +606,39 @@ impl<T: Trait> Module<T> {
         Ok(())
     }
 
-    fn check_owner_or_admin_permissions(collection_id: u64, subject: T::AccountId) -> DispatchResult {
-
-        Self::collection_exists(collection_id)?;
+    fn check_owner_or_admin_permissions_private(collection_id: u64, subject: T::AccountId) -> bool {
 
         let target_collection = <Collection<T>>::get(collection_id);
-        let is_owner = subject == target_collection.owner;
-
-        let no_perm_mes = "You do not have permissions to modify this collection";
-        let exists = <AdminList<T>>::contains_key(collection_id);
-
-        if !is_owner
-        {
-            ensure!(exists, no_perm_mes);
-            ensure!(<AdminList<T>>::get(collection_id).contains(&subject), no_perm_mes);
+        if subject == target_collection.owner {
+            return true;
         }
+
+        let admin_list_exists = <AdminList<T>>::contains_key(collection_id);
+        if admin_list_exists {
+            return <AdminList<T>>::get(collection_id).contains(&subject);
+        }
+        false
+    }
+
+    fn check_owner_or_admin_permissions(collection_id: u64, subject: T::AccountId) -> DispatchResult {
+        Self::collection_exists(collection_id)?;
+
+        ensure!(Self::check_owner_or_admin_permissions_private(collection_id, subject), "You do not have permissions to modify this collection");
         Ok(())
+    }
+
+    fn check_white_list_access(subject: T::AccountId, collection_id: u64) -> bool {
+
+        // Admins and owners are immune to white list check
+        if Self::check_owner_or_admin_permissions_private(collection_id, subject.clone()) {
+            return true;
+        }
+
+        let target_collection = <Collection<T>>::get(collection_id);
+        match target_collection.access {
+            AccessMode::Normal => true,
+            AccessMode::WhiteList => <WhiteList<T>>::get(collection_id).contains(&subject)
+        }
     }
 
     fn is_item_owner(subject: T::AccountId, collection_id: u64, item_id: u64) -> bool{
