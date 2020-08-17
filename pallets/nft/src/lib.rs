@@ -68,6 +68,13 @@ impl Default for AccessMode { fn default() -> Self { Self::Normal } }
 
 impl Default for CollectionMode { fn default() -> Self { Self::Invalid } }
 
+#[derive(Encode, Decode, Debug, Clone, PartialEq)]
+pub enum MintMode {
+    Private,
+	WhiteList,
+}
+impl Default for MintMode { fn default() -> Self { Self::Private } }
+
 #[derive(Encode, Decode, Default, Clone, PartialEq)]
 #[cfg_attr(feature = "std", derive(Debug))]
 pub struct Ownership<AccountId> {
@@ -81,6 +88,7 @@ pub struct CollectionType<AccountId> {
     pub owner: AccountId,
     pub mode: CollectionMode,
     pub access: AccessMode,
+    pub mint_mode: MintMode,
     pub decimal_points: u32,
     pub name: Vec<u16>,        // 64 include null escape char
     pub description: Vec<u16>, // 256 include null escape char
@@ -224,6 +232,7 @@ decl_module! {
                 name: name,
                 mode: mode.clone(),
                 access: AccessMode::Normal,
+                mint_mode: MintMode::Private,
                 description: description,
                 decimal_points: decimal_points,
                 token_prefix: prefix,
@@ -361,7 +370,14 @@ decl_module! {
             let target_collection = <Collection<T>>::get(collection_id);
             ensure!(target_collection.custom_data_size >= properties.len() as u32, "Size of item is too large");
 
-            Self::check_owner_or_admin_permissions(collection_id, sender.clone())?;
+            // Check mint mode: private or public(white list)?
+            if target_collection.mint_mode == MintMode::Private {
+                Self::check_owner_or_admin_permissions(collection_id, sender.clone())?;
+            }
+            else {
+                ensure!(target_collection.access == AccessMode::WhiteList, "Access must be white list in order to use public mints");
+                ensure!(Self::check_white_list_access(sender.clone(), collection_id), "Your account is not in white list");
+            }
 
             // TODO: implement other modes
             match target_collection.mode 
@@ -582,6 +598,19 @@ decl_module! {
                 white_list.retain(|i| *i != account_id);
                 <WhiteList<T>>::insert(collection_id, white_list);
             }
+
+            Ok(())
+        }
+
+        #[weight = 0]
+        pub fn set_mint_mode(origin, collection_id: u64, mint_mode: MintMode) -> DispatchResult {
+
+            let sender = ensure_signed(origin)?;
+            Self::check_owner_or_admin_permissions(collection_id, sender)?;
+
+            let mut target_collection = <Collection<T>>::get(collection_id);
+            target_collection.mint_mode = mint_mode;
+            <Collection<T>>::insert(collection_id, target_collection);
 
             Ok(())
         }
